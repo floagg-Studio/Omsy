@@ -1,188 +1,217 @@
-# Omsy-Source
-Un système de gestion de contenu (CMS) basé sur **PHP**, sans l'interface de panneau d’administration.
+# Omsy
 
-## 📚 Table des matières
+**Omsy** est un CMS modulaire écrit en **PHP**, pensé pour créer et administrer des applications web. Il fournit un noyau léger (sessions, base de données, permissions, cache, plugins) et un panneau d'administration séparé, extensible via des plugins et des templates.
 
-* [À propos](#à-propos)
-* [Fonctionnalités](#fonctionnalités)
-* [Prérequis](#prérequis)
-* [Installation](#installation)
-* [Configuration](#configuration)
-* [Structure du projet](#structure-du-projet)
-* [Utilisation](#utilisation)
-* [Pile technologique](#pile-technologique)
-* [Contribution](#contribution)
-* [Licence](#licence)
+> ⚠️ **Statut : en développement actif.** Le projet n'a pas encore fait l'objet d'un audit de sécurité complet. Lisez la section [Sécurité](#-sécurité) avant tout déploiement en production.
 
-## ℹ️ À propos
+---
 
-**Omsy-Source** est un système de gestion de contenu (CMS) en PHP conçu pour créer et administrer des applications web.
-Le système propose une architecture modulaire avec un panneau d’administration dédié à la gestion du contenu, des utilisateurs et de la configuration du système.
+## 📚 Sommaire
+
+- [Fonctionnalités](#-fonctionnalités)
+- [Prérequis](#-prérequis)
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [Structure du projet](#-structure-du-projet)
+- [Base de données](#-base-de-données)
+- [Plugins et templates](#-plugins-et-templates)
+- [Sécurité](#-sécurité)
+- [Conventions de code](#-conventions-de-code)
+- [Contribuer](#-contribuer)
+- [Licence](#-licence)
+- [Liens et contact](#-liens-et-contact)
+
+---
 
 ## ✨ Fonctionnalités
 
-* **Architecture modulaire** : structure organisée avec séparation des responsabilités
-* **Panneau d’administration** : interface dédiée à la gestion du système (Omsy-admin-panel)
-* **Sécurité des sessions** : gestion sécurisée des sessions avec cookies HTTP-only et SECURE
-* **Réécriture d’URL** : prise en charge de la réécriture d’URL personnalisée via `.htaccess` et `rewrite.json`
-* **Application Web Progressive (PWA)** : manifeste PWA pour une expérience semblable à une application mobile
-* **Accès basé sur les rôles** : système de gestion des rôles basé sur les sessions et une base de Bits
+- **Architecture modulaire** : le noyau charge ses composants (`OmsySecurity`, `OmsySql`, `OmsyPermission`, `OmsySession`, `OmsyPlugin`, `OmsyInterface`, `OmsyCache`…) depuis la liste déclarée dans `Core.xml`.
+- **Panneau d'administration** : accessible par défaut sur `/panel` (URI et dossier configurables).
+- **Comptes et rôles** : gestion des comptes, des rôles et des permissions.
+- **Plugins et templates** : le contenu et les fonctionnalités s'étendent via `usr/plugin` et un template actif défini dans la configuration.
+- **Réécriture d'URL** : toutes les requêtes passent par `index.php` grâce à `.htaccess`.
+- **PWA** : un `manifest.json` est fourni pour une expérience proche d'une application mobile.
+- **Cache** : composant `OmsyCache`, avec une configuration Redis prévue.
+- **E-mails** : module `OmsyPHPMailer` inclus.
+
+---
 
 ## 🧾 Prérequis
 
-* PHP 7.4 ou supérieur
-* Serveur web Apache avec `mod_rewrite` activé
-* Base de données MySQL/MariaDB (si applicable)
-* Prise en charge des sessions PHP activée
+| Élément | Version / détail |
+|---|---|
+| PHP | 7.4 minimum (développé et testé avec PHP 8.2) |
+| Extensions PHP | `simplexml`, sessions, `mysqli` ou `pdo_mysql` |
+| Serveur web | Apache avec `mod_rewrite` et `AllowOverride All` |
+| Base de données | MySQL 5.7+ / MariaDB 10.4+ |
+| Redis | Optionnel (cache) |
+
+> Avec Nginx, les règles de `.htaccess` ne s'appliquent pas : la réécriture et le blocage de `Core.xml` doivent être recréés dans la configuration du serveur.
+
+---
 
 ## ⚙️ Installation
 
 1. **Cloner le dépôt**
 
    ```bash
-   git clone https://github.com/is-omini/Omsy-Source.git
-   cd Omsy-Source
+   git clone https://github.com/floagg-Studio/Omsy.git
+   cd Omsy
    ```
 
-2. **Configurer votre serveur web**
-
-   * Pointez la racine du document vers le répertoire **Omsy-Source**
-   * Assurez-vous que `mod_rewrite` est activé dans Apache
-   * Autorisez les substitutions via `.htaccess`
-
-3. **Définir les permissions appropriées**
+2. **Créer la configuration**
 
    ```bash
-   chmod 755 .
-   chmod 644 .htaccess
+   cp default.Core.xml Core.xml
    ```
 
-4. **Configurer la base de données** (si nécessaire)
+   `index.php` charge `Core.xml` au démarrage : sans ce fichier, l'application s'arrête avec « Erreur de chargement du fichier XML ».
 
-   * Mettez à jour les paramètres de connexion dans le fichiers de configuration Core.xml
+3. **Créer la base de données et importer le schéma**
 
-## ⚙️ Configuration
+   ```bash
+   mysql -u <utilisateur> -p -e "CREATE DATABASE omsy_sql CHARACTER SET utf8mb4;"
+   mysql -u <utilisateur> -p omsy_sql < omsy_sql.sql
+   ```
 
-### Configuration de l’environnement
+4. **Renseigner `Core.xml`** (section `<database>`) avec un utilisateur dédié, **pas `root`** (voir [Configuration](#-configuration)).
 
-Le système utilise par défaut le fuseau horaire `Europe/Paris`.
-Pour le modifier, éditez le fichier `index.php` :
+5. **Configurer Apache** : pointer le `DocumentRoot` vers le dossier du projet, activer `mod_rewrite` et autoriser les `.htaccess`.
+
+6. **Ouvrir le site** dans votre navigateur, puis l'administration sur `/panel`.
+
+---
+
+## 🛠️ Configuration
+
+Toute la configuration passe par `Core.xml` (modèle : `default.Core.xml`).
+
+| Section | Rôle |
+|---|---|
+| `<omsy>` | Environnement (`local`, …), version, liste des composants à charger, options d'initialisation PHP, accès à l'administration, dossier de logs |
+| `<database>` | Connexion MySQL / MariaDB |
+| `<redis>` | Connexion Redis (cache) |
+| `<template>` | Template actif, titre, plugins à activer |
+| `<security>` | Autorisation des fonctions sensibles : `eval`, `exec`, `system`, `passthru` |
+| `<server>` | Clés privée et de sel, URL du serveur de mises à jour |
+
+### Options importantes
+
+| Option | Valeur par défaut | Recommandation en production |
+|---|---|---|
+| `display_errors` | `1` | `0` : ne jamais afficher les erreurs aux visiteurs |
+| `session.cookie_httponly` | `True` | Conserver |
+| `session.cookie_secure` | `1` | Conserver (impose HTTPS) |
+| `memory_limit` | `800M` | Réduire selon vos besoins réels |
+| `<security><exec>` | `true` | Passer à `false` sauf nécessité |
+| `<database><username>` | `root` | Utiliser un compte dédié aux droits limités |
+| `<server><privatekey>` / `<saltkey>` | vides | Renseigner des valeurs longues et aléatoires |
+
+Le fuseau horaire par défaut est `Europe/Paris` ; il se modifie dans `index.php` :
 
 ```php
-date_default_timezone_set('Your/Timezone');
+date_default_timezone_set('Votre/Fuseau');
 ```
 
-### Configuration des sessions
-
-La sécurité des sessions est configurée dans `index.php` :
-
-* Les cookies HTTP-only sont activés
-* La limite de mémoire est fixée à 800 Mo
-
-### Réécriture d’URL
-
-Le projet inclut :
-
-* `.htaccess` pour les règles de réécriture Apache
-* `rewrite.json` pour les règles de réécriture personnalisées Omsy-Rewrite
+---
 
 ## 🗂️ Structure du projet
 
 ```
-Omsy-Source/
-├── index.php          # Point d’entrée principal
-├── manifest.json      # Fichier manifeste PWA
-├── Core.xml           # Configuration principale
-├── rewrite.json       # Règles de réécriture d’URL
-├── .htaccess          # Configuration Apache
-├── .gitignore         # Règles Git d’exclusion
-├── .gitattributes     # Attributs Git
-├── panel/             # Répertoire du panneau d’administration
-│   ├── index.php
-│   ├── getter.php
-│   └── interface/
-├── sys/               # Fichiers du noyau système
-│   └── class/
-│       └── CMS.php    # Classe principale du CMS
-├── usr/               # Fichiers liés aux utilisateurs
-└── share/             # Ressources partagées
+Omsy/
+├── index.php          # Point d'entrée : charge Core.xml puis instancie OmsyMain
+├── default.Core.xml   # Modèle de configuration (à copier en Core.xml)
+├── .htaccess          # Réécriture d'URL et protection de Core.xml (Apache)
+├── manifest.json      # Manifeste PWA
+├── omsy_sql.sql       # Schéma de la base de données
+├── sql_install.json   # Données d'installation SQL
+├── panel/             # Panneau d'administration
+├── sys/               # Noyau (sys/class/OmsyMain.php et composants)
+├── usr/plugin/        # Plugins utilisateur
+└── share/             # Ressources partagées (logs : share/_)
 ```
 
-## 🚀 Utilisation
+---
 
-### Utilisation de base
+## 🗄️ Base de données
 
-1. Accédez à l’application via votre navigateur web
-2. Le point d’entrée principal (`index.php`) initialise le CMS
-3. Rendez-vous sur `/panel` pour accéder à l’interface d’administration
+Le schéma `omsy_sql.sql` crée les tables suivantes :
 
-### Initialisation du CMS
+| Table | Contenu |
+|---|---|
+| `omsy_account` | Comptes (identifiant, mot de passe, rôle, date d'inscription) |
+| `omsy_account_login` | Jetons de connexion |
+| `omsy_account_obj` | Objets rattachés à un compte |
+| `omsy_object` | Objets génériques (type, nom, contenu) |
+| `omsy_session` | Sessions et dernière activité |
+| `omsy_viewpage` | Journal de pages vues (user-agent, IP, date) |
+| `omsyreport_report` | Signalements |
 
-Le système s’initialise via le fichier principal `index.php` :
+> `omsy_viewpage` stocke des adresses IP : ce sont des données personnelles au sens du RGPD. Si votre site s'adresse à des visiteurs dans l'UE, prévoyez une information des utilisateurs et une durée de conservation limitée.
 
-```php
-include "./sys/class/CMS.php";
-new CMS();
-```
+---
 
-## 💻 Pile technologique
+## 🔌 Plugins et templates
 
-* **Backend** : PHP
-* **Frontend** : HTML, CSS, JavaScript
-* **Serveur web** : Apache
-* **Supplémentaire** : Hack (dialecte de PHP)
+- Les plugins se placent dans `usr/plugin/` et s'activent via `<template><plugins>` dans `Core.xml` (liste séparée par des virgules).
+- Le template actif est défini par `<template><folder>`.
+- Le serveur de mises à jour est défini par `<server><update>`.
 
-### Répartition des langages
+> Un plugin s'exécute avec les mêmes droits que le CMS. N'installez que des plugins de sources de confiance.
 
-* PHP : ~157 Ko
-* CSS : ~22 Ko
-* JavaScript : ~15 Ko
-* Hack : ~640 octets
+---
 
-## 🤝 Contribution
+## 🔒 Sécurité
 
-Les contributions sont les bienvenues ! Vous pouvez soumettre une **Pull Request**.
-Pour les modifications majeures, ouvrez d’abord une **issue** pour discuter des changements proposés.
+Points à traiter avant une mise en production :
+
+1. **Désactiver l'affichage des erreurs** (`display_errors` à `0` dans `Core.xml` et `index.php`) et journaliser à la place.
+2. **Protéger `Core.xml`** : il contient les identifiants de base de données. Idéalement, placez-le **en dehors du dossier public** ; à défaut, vérifiez qu'il renvoie bien une erreur 403 depuis le navigateur.
+3. **Ne pas utiliser `root`** pour la connexion MySQL, et définir un mot de passe.
+4. **Forcer HTTPS** (requis par `session.cookie_secure`).
+5. **Limiter `exec`** : laissez `<exec>` à `false` si aucun plugin n'en a besoin.
+6. **Renseigner `privatekey` et `saltkey`** avec des valeurs aléatoires.
+7. **Restreindre l'accès à `/panel`** (liste d'adresses IP, authentification supplémentaire, limitation des tentatives).
+8. **Sauvegarder** régulièrement la base et le dossier `share/`.
+
+### Signaler une vulnérabilité
+
+Merci de **ne pas ouvrir d'issue publique** pour une faille de sécurité : contactez directement l'auteur (voir [Contact](#-liens-et-contact)).
+
+---
+
+## 🧭 Conventions de code
+
+| Élément | Style | Exemple |
+|---|---|---|
+| Nom de fichier | `snake_case` | `ce_si_est_un_nom` |
+| Variable | `camelCase` | `ceSiEstUnNom` |
+| Classe (fichier et variable de classe) | `PascalCase` | `CeSiEstUneClass` |
+| Constante | `__snake_case__` | `__ce_si_est_une_constance__` |
+
+---
+
+## 🤝 Contribuer
+
+Les contributions sont bienvenues. Pour une modification importante, ouvrez d'abord une **issue** afin d'en discuter.
 
 1. Forkez le dépôt
-2. Créez votre branche de fonctionnalité (`git checkout -b feature/AmazingFeature`)
-3. Validez vos modifications (`git commit -m 'Ajout de AmazingFeature'`)
-4. Poussez votre branche (`git push origin feature/AmazingFeature`)
+2. Créez une branche : `git checkout -b feature/ma-fonctionnalite`
+3. Commitez : `git commit -m "Ajout de ma fonctionnalité"`
+4. Poussez : `git push origin feature/ma-fonctionnalite`
 5. Ouvrez une Pull Request
+
+---
 
 ## 📜 Licence
 
-Ce projet ne spécifie pas de licence.
-Veuillez contacter le propriétaire du dépôt pour plus d’informations à ce sujet.
-
-## 🔗 Liens
-
-* **Dépôt** : [https://github.com/is-omini/Omsy-Source](https://github.com/is-omini/Omsy-Source)
-* **Problèmes / Issues** : [https://github.com/is-omini/Omsy-Source/issues](https://github.com/is-omini/Omsy-Source/issues)
-* **Discord Server** : [https://discord.gg/mc7Tx89dsH](https://discord.gg/mc7Tx89dsH)
-* **Personnal Discord** : @is_omini
-
-## 👤 Auteur
-
-**is-omini**
-
-* GitHub : [@is-omini](https://github.com/is-omini)
-
-## 📝 Notes
-
-* Il s’agit du dépôt du code source du CMS **Omsy**
-* Assurez-vous de configurer correctement votre environnement serveur avant le déploiement
-* Vérifiez les exigences de `.htaccess` pour une réécriture d’URL correcte
-* Passez en revue les paramètres de sécurité avant le déploiement en production
-
-* File name : ce_si_est_un_nom
-* Variable name : ceSiEstUnNom
-* File class name : CeSiEstUneClass
-* Variable class name : CeSiEstUneClass
-* Variable constance name : \_\_ce_si_est_une_constance\_\_
+Aucune licence n'est définie pour le moment. Sans licence, le code reste protégé par défaut : personne n'a le droit de le réutiliser, le modifier ou le redistribuer. Contactez l'auteur ou ajoutez un fichier `LICENSE` (MIT, GPL, etc.) pour clarifier les droits.
 
 ---
 
-**Dernière mise à jour** : basée sur les métadonnées du dépôt de **mai 2025**
+## 🔗 Liens et contact
 
----
+- **Dépôt** : <https://github.com/floagg-Studio/Omsy>
+- **Issues** : <https://github.com/floagg-Studio/Omsy/issues>
+- **Discord** : <https://discord.gg/mc7Tx89dsH>
+- **Auteur** : is-omini ([@is-omini](https://github.com/is-omini)) — Discord : `@is_omini`
